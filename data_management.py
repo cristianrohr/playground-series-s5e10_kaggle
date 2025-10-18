@@ -8,6 +8,10 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.pipeline import Pipeline
 
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import StandardScaler
+
+import xgboost as xgb
+
 
 np.random.seed(42)  # if you use numpy RNG elsewhere
 
@@ -77,10 +81,41 @@ def simple_fe(categorical_features: list, numerical_features: list):
     pipeline = Pipeline(
             steps=[
             ('preprocessor', preprocessor),
-            ('rf', RandomForestRegressor(random_state=42, 
+            ('rf', RandomForestRegressor(random_state=42,   # critical for determinism
                 n_jobs=1))
             ]
     )
 
     return pipeline
 
+
+def numerical_fe(categorical_features: list, numerical_features: list):
+
+    num_pipeline = Pipeline([
+        ('scaler', StandardScaler(with_mean = False))
+    ])
+
+    cat_pipeline = Pipeline([
+        ('one', OneHotEncoder(handle_unknown='ignore'))
+    ])
+
+    preprocessor = ColumnTransformer([
+        ('num', num_pipeline, numerical_features),
+        ('cat', cat_pipeline, categorical_features) 
+    ])
+
+    pipeline = Pipeline(
+            steps=[
+            ('preprocessor', preprocessor),
+            ('xgb', xgb.XGBRegressor(
+                n_estimators=4500,
+                learning_rate=0.05,
+                max_depth = 8, 
+                subsample = 1, 
+                colsample_bytree = 1, 
+                random_state=42,
+                n_jobs=1))
+            ]
+    )
+
+    return pipeline

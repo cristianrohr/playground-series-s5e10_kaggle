@@ -3,3 +3,9 @@ scikit-learn
 numpy
 flake8
 black
+ipykernel
+seaborn
+dython
+flake8
+black
+xgboost

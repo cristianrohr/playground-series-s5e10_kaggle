@@ -1,5 +1,5 @@
 from data_management import load_data, make_split
-from data_management import simple_fe, get_column_types
+from data_management import simple_fe, get_column_types, numerical_fe
 from train import evaluate_model
 import pickle
 import pandas as pd
@@ -8,9 +8,11 @@ baseline_rmse = 0.05937
 
 run_type = "predict" # train or predict
 
-sub_name = "baseline"
-model_name = "rf"
-fe_folder = "fe_simple"
+sub_name = "xgb"
+#model_name = "rf"
+model_name = "xgb"
+#fe_folder = "fe_simple"
+fe_folder = "fe_num"
 model_folder = f"models/"
 split_data = True
 
@@ -36,7 +38,9 @@ else:
 
 if run_type == "train":
     cat_cols, num_cols = get_column_types(x_train)
-    pipeline = simple_fe(cat_cols, num_cols)
+
+    #pipeline = simple_fe(cat_cols, num_cols)
+    pipeline = numerical_fe(cat_cols, num_cols)
 
     model_fitted = pipeline.fit(x_train, y_train)
     with open(f"{model_folder}/model_{model_name}_{fe_folder}.pkl", "wb") as f:

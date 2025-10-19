@@ -9,3 +9,4 @@ dython
 flake8
 black
 xgboost
+lightgbm

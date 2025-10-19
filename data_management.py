@@ -12,6 +12,7 @@ from sklearn.preprocessing import StandardScaler, FunctionTransformer
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 
 import xgboost as xgb
+import lightgbm as lgb
 from sklearn.model_selection import StratifiedKFold
 
 
@@ -78,10 +79,10 @@ def kfold_cv(y: pd.Series):
     return list(splitter.split(np.zeros(len(y)), bins))
     
 
-def simple_fe(categorical_features: list, numerical_features: list):
+def simple_fe(model):
 
     num_pipeline = Pipeline([
-        ('num', 'passthrough')
+        ('scaler', StandardScaler(with_mean = False))
     ])
 
     cat_pipeline = Pipeline([
@@ -89,15 +90,14 @@ def simple_fe(categorical_features: list, numerical_features: list):
     ])
 
     preprocessor = ColumnTransformer([
-        ('num', num_pipeline, numerical_features),
-        ('cat', cat_pipeline, categorical_features) 
+        ('num', num_pipeline, selector(dtype_include=np.number)),
+        ('cat', cat_pipeline, selector(dtype_exclude=np.number)) 
     ])
 
     pipeline = Pipeline(
             steps=[
             ('preprocessor', preprocessor),
-            ('rf', RandomForestRegressor(random_state=42,   # critical for determinism
-                n_jobs=1))
+            ('model', model)
             ]
     )
 
@@ -109,8 +109,16 @@ def add_features_1_names(transformer, feature_names_in):
     """Top-level helper for FunctionTransformer feature_names_out (pickle-safe)."""
     return list(add_features_1(pd.DataFrame(columns=list(feature_names_in))).columns)
 
+def add_features_2_names(transformer, feature_names_in):
+    """Top-level helper for FunctionTransformer feature_names_out (pickle-safe)."""
+    return list(add_features_2(pd.DataFrame(columns=list(feature_names_in))).columns)
 
-def numerical_fe():
+def add_all_features_names(transformer, feature_names_in):
+    """Top-level helper for FunctionTransformer feature_names_out (pickle-safe)."""
+    return list(add_all_features(pd.DataFrame(columns=list(feature_names_in))).columns)
+
+
+def numerical_fe(model):
     # Generate features first; expose dynamic column names to downstream steps
     add_features = FunctionTransformer(
         add_features_1,
@@ -135,14 +143,69 @@ def numerical_fe():
             steps=[
             ('add_features_1', add_features),
             ('preprocessor', preprocessor),
-            ('xgb', xgb.XGBRegressor(
-                n_estimators=4500,
-                learning_rate=0.05,
-                max_depth = 8, 
-                subsample = 1, 
-                colsample_bytree = 1, 
-                random_state=42,
-                n_jobs=1))
+            ('model', model)
+            ]
+    )
+
+    return pipeline
+
+def numerical_fe_2(model):
+    # Generate features first; expose dynamic column names to downstream steps
+    add_features = FunctionTransformer(
+        add_features_2,
+        validate=False,
+        feature_names_out=add_features_2_names,
+    )
+
+    num_pipeline = Pipeline([
+        ('scaler', StandardScaler(with_mean = False))
+    ])
+
+    cat_pipeline = Pipeline([
+        ('one', OneHotEncoder(handle_unknown='ignore'))
+    ])
+
+    preprocessor = ColumnTransformer([
+        ('num', num_pipeline, selector(dtype_include=np.number)),
+        ('cat', cat_pipeline, selector(dtype_exclude=np.number)) 
+    ])
+
+    pipeline = Pipeline(
+            steps=[
+            ('add_features_2', add_features),
+            ('preprocessor', preprocessor),
+            ('model', model)
+            ]
+    )
+
+    return pipeline
+
+def numerical_fe_all(model):
+    # Generate features first; expose dynamic column names to downstream steps
+    add_features = FunctionTransformer(
+        add_all_features,
+        validate=False,
+        feature_names_out=add_all_features_names,
+    )
+
+    num_pipeline = Pipeline([
+        ('scaler', StandardScaler(with_mean = False))
+    ])
+
+    cat_pipeline = Pipeline([
+        ('one', OneHotEncoder(handle_unknown='ignore'))
+    ])
+
+    preprocessor = ColumnTransformer([
+        ('num', num_pipeline, selector(dtype_include=np.number)),
+        ('cat', cat_pipeline, selector(dtype_exclude=np.number)) 
+    ])
+
+    pipeline = Pipeline(
+            steps=[
+            ('add_all_features', add_features),
+            ('preprocessor', preprocessor),
+            ('model', model)
             ]
     )
 
@@ -165,19 +228,26 @@ def add_features_1(df: pd.DataFrame) -> pd.DataFrame:
                              (out['weather'] == 'rainy')).astype(int)
     return out
 
-def xgb_random_search(y_train):
+def add_features_2(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    if 'road_type' in out and 'speed_limit' in out:
+        out['road_type_speed'] = out['road_type'].astype(str) + '_' + out['speed_limit'].astype(str)
+    if 'weather' in out and 'lighting' in out:
+        out['weather_lighting'] = out['weather'].astype(str) + '_' + out['lighting'].astype(str)
+    if 'road_type' in out and 'curvature' in out:
+        out['road_type_curvature'] = out['road_type'].astype(str) + '_' + out['curvature'].astype(str)
+    return out
 
-    param_dist = {
-        "xgb__n_estimators": [500, 1000, 2000, 3000],
-        "xgb__learning_rate": [0.01, 0.05, 0.1, 0.15],
-        "xgb__max_depth": [5, 7, 9, 11],
-        "xgb__subsample": [0.7, 0.8, 0.9],
-        "xgb__colsample_bytree": [0.7, 0.8, 0.9],
-        "xgb__reg_lambda": [1.0, 5.0, 10.0],
-    }
+def add_all_features(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    out = add_features_1(out)
+    out = add_features_2(out)
+    return out
+
+def random_search(pl, param_dist, y_train):
 
     search = RandomizedSearchCV(
-        estimator=numerical_fe(),
+        estimator=pl,
         param_distributions=param_dist,
         n_iter=20,  # Number of parameter settings that are sampled
         cv=kfold_cv(y_train),

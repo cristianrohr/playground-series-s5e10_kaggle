@@ -259,3 +259,55 @@ def random_search(pl, param_dist, y_train):
     )
 
     return search
+
+def add_focused_features(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    # Interaction between speed limit and curvature
+    if 'speed_limit' in out and 'curvature' in out:
+        out['speed_curvature_interaction'] = out['speed_limit'] * out['curvature']
+
+    # Interaction between speed limit and lighting
+    if 'speed_limit' in out and 'lighting' in out:
+        # Creating a categorical interaction feature
+        out['speed_lighting_interaction'] = out['speed_limit'].astype(str) + '_' + out['lighting'].astype(str)
+
+    # Interaction between weather and lighting
+    if 'weather' in out and 'lighting' in out:
+        out['weather_lighting_interaction'] = out['weather'].astype(str) + '_' + out['lighting'].astype(str)
+
+    return out
+
+def add_focused_features_names(transformer, feature_names_in):
+    """Top-level helper for FunctionTransformer feature_names_out (pickle-safe)."""
+    return list(add_focused_features(pd.DataFrame(columns=list(feature_names_in))).columns)
+
+def focused_fe(model):
+    # Generate features first; expose dynamic column names to downstream steps
+    add_features = FunctionTransformer(
+        add_focused_features,
+        validate=False,
+        feature_names_out=add_focused_features_names,
+    )
+
+    num_pipeline = Pipeline([
+        ('scaler', StandardScaler(with_mean = False))
+    ])
+
+    cat_pipeline = Pipeline([
+        ('one', OneHotEncoder(handle_unknown='ignore'))
+    ])
+
+    preprocessor = ColumnTransformer([
+        ('num', num_pipeline, selector(dtype_include=np.number)),
+        ('cat', cat_pipeline, selector(dtype_exclude=np.number))
+    ])
+
+    pipeline = Pipeline(
+            steps=[
+            ('add_focused_features', add_features),
+            ('preprocessor', preprocessor),
+            ('model', model)
+            ]
+    )
+
+    return pipeline

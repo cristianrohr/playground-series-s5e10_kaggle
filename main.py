@@ -1,5 +1,5 @@
 from data_management import load_data, make_split
-from data_management import simple_fe, get_column_types, numerical_fe
+from data_management import simple_fe, get_column_types, numerical_fe, focused_fe
 from train import evaluate_model
 import pickle
 import pandas as pd
@@ -12,12 +12,12 @@ baseline_rmse = 0.05937
 
 run_type = "predict" # train or predict
 
-sub_name = "xgb_simple"
+sub_name = "xgb_focused"
 #model_name = "rf"
 model_name = "xgb"
 #fe_folder = "fe_simple"
 #fe_folder = "fe_num_new_features"
-fe_folder = "fe_simple"
+fe_folder = "fe_focused"
 if fe_folder not in os.listdir("data"):
     os.mkdir(f"data/{fe_folder}")
 model_folder = f"models"
@@ -69,7 +69,7 @@ if run_type == "train":
         "model__reg_lambda": [3.0, 5.0, 7.0],
     }
 
-    pl = simple_fe(model)
+    pl = focused_fe(model)
     pipeline = random_search(pl, param_dist, y_train)
 
     model_fitted = pipeline.fit(x_train, y_train)
